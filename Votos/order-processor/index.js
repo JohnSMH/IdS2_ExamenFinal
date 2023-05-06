@@ -47,6 +47,7 @@ app.post('/votar', async (req, res) => {
     const votos = response.data || [];
     const votanteRegistrado = votos.some(voto => voto.votante === votante);
     if (votanteRegistrado) {
+      await addVotoFallido(stateStoreBaseUrl);
       return res.status(400).json({ message: 'El votante ya ha emitido su voto' });
     }
   } catch (error) {
@@ -60,6 +61,7 @@ app.post('/votar', async (req, res) => {
     const candidatos = response.data.candidatos || [];
     const candidatoExistente = candidatos.some(cand => cand.Nombre === candidato);
     if (!candidatoExistente) {
+      await addVotoFallido(stateStoreBaseUrl);
       return res.status(400).json({ message: 'El candidato especificado no existe' });
     }
   } catch (error) {
@@ -72,6 +74,7 @@ app.post('/votar', async (req, res) => {
     const response = await axios.get(`http://localhost:3001/estado`);
     const estado = response.data.estado;
     if (estado !== 2) {
+      await addVotoFallido(stateStoreBaseUrl);
       return res.status(400).json({ message: 'La fase de votación ha sido cerrada' });
     }
   } catch (error) {
@@ -96,6 +99,7 @@ app.post('/votar', async (req, res) => {
       key: 'votos',
       value: currentVotos
     }]);
+    await addVotoValido(stateStoreBaseUrl);
     console.log('Voto guardado:', newVoto);
     res.sendStatus(201);
   } catch (error) {
@@ -123,25 +127,70 @@ app.post('/cerrarfase', async (req, res) => {
   try {
     // Validar secreto
     const response = await axios.get('http://localhost:3000/getsecret');
-    const secretFromServer = response.data.secret;
+    const secretFromServer = response.data.mysecret;
     if (secret !== secretFromServer) {
       return res.status(401).send('Unauthorized');
     }
     
     // Validar estado
-    const estadoResponse = await axios.get(`${stateStoreBaseUrl}/estado`);
-    const estado = estadoResponse.data;
+    const estadoResponse = await axios.get(`http://localhost:3001/estado`);
+    const estado = estadoResponse.data.estado;
     if (estado !== 2) {
       return res.status(400).send('Bad Request');
     }
 
     // Guardar estado
-    const state = [{ key: 'estado', value: '3' }];
-    await axios.post(`${stateStoreBaseUrl}`, state);
+    const state = { estado: 3 };
+    await axios.post(`http://localhost:3001/estado`, state);
     console.log('Fase de votación cerrada');
     res.sendStatus(200);
   } catch (error) {
     console.error(error);
+    res.sendStatus(500);
+  }
+});
+
+async function addVotoValido(stateStoreBaseUrl) {
+  try {
+    const response = await axios.get(`${stateStoreBaseUrl}/votos_validos`);
+    const currentCount = response.data || 0;
+    const state = [
+      {
+        key: 'votos_validos',
+        value: currentCount+1
+      }
+    ];
+    await axios.post(`${stateStoreBaseUrl}`, state);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function addVotoFallido(stateStoreBaseUrl) {
+  try {
+    const response = await axios.get(`${stateStoreBaseUrl}/votos_fallidos`);
+    const currentCount = response.data || 0;
+    const state = [
+      {
+        key: 'votos_fallidos',
+        value: currentCount+1
+      }
+    ];
+    await axios.post(`${stateStoreBaseUrl}`, state);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+app.get('/votosStat', async (req, res) => {
+  try {
+    const responseExitosos = await axios.get(`${stateStoreBaseUrl}/votos_validos`);
+    const currentCountExitosos = responseExitosos.data || 0;
+    const responseFallidos = await axios.get(`${stateStoreBaseUrl}/votos_fallidos`);
+    const currentCountFallidos = responseFallidos.data || 0;
+    res.status(200).json({ currentCountExitosos, currentCountFallidos });
+  } catch (error) {
+    console.error('Error al obtener el estado de los votos:', error);
     res.sendStatus(500);
   }
 });

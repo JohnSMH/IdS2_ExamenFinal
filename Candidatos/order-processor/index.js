@@ -118,6 +118,7 @@ app.post('/cerrarfase', async (req, res) => {
   ];
   
   try {
+    await axios.post(`http://localhost:3001/estado`,{estado:2})
     await axios.post(`${stateStoreBaseUrl}`, state);
     console.log('Fase cerrada');
     res.sendStatus(200);
